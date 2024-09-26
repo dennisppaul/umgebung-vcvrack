@@ -24,9 +24,19 @@ $ make dist
 ( copy plugin from `‌dist` to `~/Library/Application Support/Rack2/` )
 ```
 
+## adobe illustrator export settings
+
+- Export As or Artboards Export
+- Styling: Inline Style
+- Font: Convert to Outlines
+- Images: Embed
+- Object IDs: Layer Names
+- Minify unchecked
+- Responsive unchecked
+
 ## creating a widget
 
-- `‌OpenGlWidget` might be the one we need ( see `$RACK_DIR/include/widget/OpenGlWidget.hpp` + `$RACK_DIR/src/widget/OpenGlWidget.cpp` ) 
+- `OpenGlWidget` might be the one we need ( see `$RACK_DIR/include/widget/OpenGlWidget.hpp` + `$RACK_DIR/src/widget/OpenGlWidget.cpp` ) 
 
 ```cpp
 struct SomeWidget : ModuleWidget {
@@ -49,6 +59,3 @@ struct SomeWidget : ModuleWidget {
 
 (WIP)
 
-## example project: Milkrack
-
-source code for [Milkrack](https://github.com/korfuri/Milkrack/tree/0.6.0) or []()

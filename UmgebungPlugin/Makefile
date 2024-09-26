@@ -18,6 +18,7 @@ SOURCES += $(wildcard src/*.cpp)
 DISTRIBUTABLES += res
 DISTRIBUTABLES += $(wildcard LICENSE*)
 DISTRIBUTABLES += $(wildcard presets)
+DISTRIBUTABLES += dep
 
 # Include the Rack plugin Makefile framework
 include $(RACK_DIR)/plugin.mk
