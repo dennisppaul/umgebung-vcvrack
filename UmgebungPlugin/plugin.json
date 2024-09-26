@@ -1,0 +1,25 @@
+{
+  "slug": "UmgebungPlugin",
+  "name": "Umgebung Plugin",
+  "version": "2.0.0",
+  "license": "CC0-1.0",
+  "brand": "Umgebung Plugin",
+  "author": "Dennis P Paul",
+  "authorEmail": "",
+  "authorUrl": "https://dennisppaul.de/",
+  "pluginUrl": "",
+  "manualUrl": "",
+  "sourceUrl": "",
+  "donateUrl": "",
+  "changelogUrl": "",
+  "modules": [
+    {
+      "slug": "UmgebungModule",
+      "name": "UmgebungModule",
+      "description": "Host for Umgebung Sketches",
+      "tags": [
+        "Utility"
+      ]
+    }
+  ]
+}
