@@ -16,10 +16,12 @@ void setup() { KLST_VCV_LOG("setup"); }
 
 void loop() {  }
 
+void draw() { }
+
 void beat(uint32_t beat_count) { KLST_VCV_LOG("beat: %i", beat_count); }
 
 void audioblock(float** input, float** output, uint32_t length) { KLST_VCV_LOG("audioblock"); }
 
-const char* name() { return "UmgebungSketch"; }
+const char* name() { return "UmgebungSketch23"; }
 
 }
