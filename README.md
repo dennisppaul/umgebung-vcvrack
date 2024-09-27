@@ -1,4 +1,4 @@
-# umgebung / VCV Rack
+# Umgebung in VCV Rack
 
 following instructions from [Plugin Development Tutorial](https://vcvrack.com/manual/PluginDevelopmentTutorial)
 
