@@ -1,32 +1,18 @@
 #pragma once
 
-#include <stdint.h>
+#include "PApplet.h"
 
-namespace umgebung {
-    class PApplet;
-}
+using namespace umgebung;
 
-class UmgebungAdapter {
-public:
-    umgebung::PApplet* instance;
-
-    [[nodiscard]] umgebung::PApplet* create();
-
-    void destroy();
-
-    void        setup();
-    void        draw();
-    void        beat(uint32_t beat_count);
-    void        audioblock(float** input, float** output, int length);
-    const char* name();
-};
+// TODO add `void settings()`
+// TODO maybe add some events like mouse or key events
 
 extern "C" {
-UmgebungAdapter* create_umgebung();
-void             destroy_umgebung(UmgebungAdapter* application);
-void             setup(UmgebungAdapter* application);
-void             draw(UmgebungAdapter* application);
-void             beat(UmgebungAdapter* application, uint32_t beat_count);
-void             audioblock(UmgebungAdapter* application, float** input, float** output, int length);
-const char*      name(UmgebungAdapter* application);
+PApplet*    create_umgebung();
+void        destroy_umgebung(PApplet* application);
+void        setup(PApplet* application);
+void        draw(PApplet* application);
+void        beat(PApplet* application, uint32_t beat_count);
+void        audioblock(PApplet* application, float** input, float** output, int length);
+const char* name(PApplet* application);
 }

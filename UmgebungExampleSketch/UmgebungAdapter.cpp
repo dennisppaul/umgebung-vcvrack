@@ -1,64 +1,16 @@
+#include <iostream>
 #include "Umgebung.h"
 #include "UmgebungAdapter.h"
 
 using namespace umgebung;
 
-namespace umgebung {
-    class PApplet;
-}
-
-PApplet* UmgebungAdapter::create() {
-    instance = umgebung::instance();
-    return umgebung::instance();
-}
-
-void UmgebungAdapter::destroy() {
-    delete instance;
-    instance = nullptr;
-}
-
-void UmgebungAdapter::setup() {
-    if (instance) {
-        instance->setup();
-    }
-}
-
-
-void UmgebungAdapter::draw() {
-    if (instance) {
-        instance->draw();
-    }
-}
-
-void UmgebungAdapter::beat(uint32_t beat_count) {
-    if (instance) {
-        // instance->beat(beat_count);
-    }
-}
-
-void UmgebungAdapter::audioblock(float** input, float** output, int length) {
-    if (instance) {
-        instance->audioblock(input, output, length);
-    }
-}
-
-const char* UmgebungAdapter::name() {
-    if (instance) {
-        return instance->name();
-    }
-    return "";
-}
-
 extern "C" {
-UmgebungAdapter* create_umgebung() { return new UmgebungAdapter(); }
-void             destroy_umgebung(UmgebungAdapter* application) {
-    delete application->instance;
-    application->instance = nullptr;
-    delete application;
-}
-void        setup(UmgebungAdapter* application) { application->setup(); }
-void        draw(UmgebungAdapter* application) { application->draw(); }
-void        beat(UmgebungAdapter* application, uint32_t beat_count) { application->beat(beat_count); }
-void        audioblock(UmgebungAdapter* application, float** input, float** output, int length) { application->audioblock(input, output, length); }
-const char* name(UmgebungAdapter* application) { return application->name(); }
+void        die() { std::cout << "UmgebungAdapter: application is nullptr" << std::endl; }
+PApplet*    create_umgebung() { return instance(); }
+void        destroy_umgebung(PApplet* application) { delete application; }
+void        setup(PApplet* application) { application != nullptr ? application->setup() : die(); }
+void        draw(PApplet* application) { application != nullptr ? application->draw() : die(); }
+void        beat(PApplet* application, uint32_t beat_count) { application != nullptr ? application->beat(beat_count) : die(); }
+void        audioblock(PApplet* application, float** input, float** output, const int length) { application != nullptr ? application->audioblock(input, output, length) : die(); }
+const char* name(PApplet* application) { return application != nullptr ? application->name() : "null"; }
 }

@@ -47,27 +47,6 @@ struct UmgebungModule : Module {
     void* mHandleUmgebungSketch = nullptr;
 #endif
 
-    // typedef void       (*KLST_SetupCallback)(void);
-    // KLST_SetupCallback mSetupCallback = nullptr;
-    //
-    // typedef void      (*KLST_LoopCallback)(void);
-    // KLST_LoopCallback mLoopCallback = nullptr;
-    //
-    // typedef void      (*KLST_DrawCallback)(void);
-    // KLST_DrawCallback mDrawCallback = nullptr;
-    //
-    // typedef void      (*KLST_BeatCallback)(uint32_t);
-    // KLST_BeatCallback mBeatCallback = nullptr;
-    //
-    // typedef void            (*KLST_AudioblockCallback)(float**, float**, uint32_t);
-    // KLST_AudioblockCallback mAudioblockCallback = nullptr;
-    //
-    // typedef const char* (*KLST_NameCallback)(void);
-    // KLST_NameCallback   mNameCallback = nullptr;
-
-#ifdef UMGEBUNG_ADAPTER
-#endif
-
     enum ParamId {
         PITCH_PARAM,
         RELOAD_PARAM,
@@ -124,7 +103,7 @@ struct UmgebungModule : Module {
         configOutput(RIGHT_OUTPUT, "");
     }
 
-    ~UmgebungModule() {
+    ~UmgebungModule() override {
         try {
             unload_app();
         } catch (Exception e) {
@@ -135,13 +114,47 @@ struct UmgebungModule : Module {
         }
     }
 
+    void process_audio(const int length) {
+        constexpr int numChannels = 2;
+        auto**        input       = new float*[numChannels];
+        auto**        output      = new float*[numChannels];
+
+        for (int i = 0; i < numChannels; ++i) {
+            input[i]  = new float[length];
+            output[i] = new float[length];
+        }
+
+        for (int sample = 0; sample < length; ++sample) {
+            // TODO this must be read from the input buffer
+            input[0][sample]  = inputs[LEFT_INPUT].getVoltage() / 5.0f;
+            input[1][sample]  = inputs[RIGHT_INPUT].getVoltage() / 5.0f;
+            output[0][sample] = 0.0f; // Initialize output to 0
+            output[1][sample] = 0.0f;
+        }
+
+        if (fAudioblockFunction) {
+            fAudioblockFunction(umgebung_app, input, output, length);
+        }
+
+        for (int sample = 0; sample < length; ++sample) {
+            // TODO this must be written to the output buffer
+            outputs[LEFT_OUTPUT].setVoltage(output[0][sample] * 5.0f);
+            outputs[RIGHT_OUTPUT].setVoltage(output[1][sample] * 5.0f);
+        }
+
+        for (int i = 0; i < numChannels; ++i) {
+            delete[] input[i];
+            delete[] output[i];
+        }
+        delete[] input;
+        delete[] output;
+    }
+
     void process(const ProcessArgs& args) override {
         if (mInitializeApp) {
-#ifdef UMGEBUNG_ADAPTER
-            if (umgebung_app) {
-                umgebung_app->setup();
+            if (umgebung_app && fSetupFunction) {
+                fSetupFunction(umgebung_app);
             }
-#endif
             mInitializeApp = false;
         }
 
@@ -155,8 +168,8 @@ struct UmgebungModule : Module {
         bg_color_green = inputs[RIGHT_INPUT].getVoltage() / 5.0f;
         bg_color_blue  = params[PITCH_PARAM].getValue();
 
-        outputs[LEFT_OUTPUT].setVoltage(inputs[LEFT_INPUT].getVoltage());
-        outputs[RIGHT_OUTPUT].setVoltage(inputs[RIGHT_INPUT].getVoltage());
+        // outputs[LEFT_OUTPUT].setVoltage(inputs[LEFT_INPUT].getVoltage());  // pass through
+        // outputs[RIGHT_OUTPUT].setVoltage(inputs[RIGHT_INPUT].getVoltage()); // pass through
 
         //         float mSampleLeft                    = mLeftOutput[mSampleCollectorCounter];
         //         float mSampleRight                   = mRightOutput[mSampleCollectorCounter];
@@ -173,15 +186,16 @@ struct UmgebungModule : Module {
         //         std::cout << "params[PITCH_PARAM]: " << params[PITCH_PARAM].getValue() << std::endl;
         //         std::cout << std::endl;
 
+        // TODO implement audio processing with SAMPLES_PER_AUDIO_BLOCK greater than 1 ;)
+        process_audio(1);
+
         mBeatTriggerCounter += args.sampleTime;
         if (mBeatTriggerCounter >= mBeatDurationSec) {
             mBeatTriggerCounter -= mBeatDurationSec;
-#ifdef UMGEBUNG_ADAPTER
-            if (umgebung_app) {
-                // umgebung_app->beat(mBeatCounter);
+            if (umgebung_app && fBeatFunction) {
+                fBeatFunction(umgebung_app, mBeatCounter);
                 mBeatCounter++;
             }
-#endif
         }
 
         // Blink light at 1Hz
@@ -192,19 +206,15 @@ struct UmgebungModule : Module {
         }
         lights[BLINK_LIGHT].setBrightness(blinkPhase < 0.5f ? 1.f : 0.f);
 
-#ifdef UMGEBUNG_ADAPTER
-        if (umgebung_app) {
-            umgebung_app->loop();
-        }
-#endif
+        // if (umgebung_app) {
+        //     umgebung_app->loop();
+        // }
     }
 
-    void call_draw() {
-#ifdef UMGEBUNG_ADAPTER
-        if (umgebung_app) {
-            umgebung_app->draw();
+    void call_draw() const {
+        if (umgebung_app && fDrawFunction) {
+            fDrawFunction(umgebung_app);
         }
-#endif
     }
 
     template<typename T>
@@ -222,64 +232,30 @@ struct UmgebungModule : Module {
     }
 
     typedef UmgebungApp* (*CreateUmgebungFunctionPtr)();
-    typedef void         (*DestroyCallbackFunctionPtr)(UmgebungApp*);
+    typedef void         (*DestroyFunctionPtr)(UmgebungApp*);
+    typedef void         (*SetupFunctionPtr)(UmgebungApp*);
+    typedef void         (*DrawFunctionPtr)(UmgebungApp*);
+    typedef void         (*BeatFunctionPtr)(UmgebungApp*, uint32_t);
+    typedef void         (*AudioblockFunctionPtr)(UmgebungApp*, float**, float**, int);
     typedef const char*  (*NameFunctionPtr)(UmgebungApp*);
 
-    CreateUmgebungFunctionPtr  fCreateUmgebungFunction  = nullptr;
-    DestroyCallbackFunctionPtr fDestroyUmgebungFunction = nullptr;
-    NameFunctionPtr            fNameFunction            = nullptr;
+    CreateUmgebungFunctionPtr fCreateUmgebungFunction  = nullptr;
+    DestroyFunctionPtr        fDestroyUmgebungFunction = nullptr;
+    SetupFunctionPtr          fSetupFunction           = nullptr;
+    DrawFunctionPtr           fDrawFunction            = nullptr;
+    BeatFunctionPtr           fBeatFunction            = nullptr;
+    AudioblockFunctionPtr     fAudioblockFunction      = nullptr;
+    NameFunctionPtr           fNameFunction            = nullptr;
 
     void load_symbols() {
         load_symbol(mHandleUmgebungSketch, "create_umgebung", fCreateUmgebungFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "destroy_umgebung", fDestroyUmgebungFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "setup", fSetupFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "draw", fDrawFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "beat", fBeatFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "audioblock", fAudioblockFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "name", fNameFunction, mLibraryName);
     }
-
-    //     typedef UmgebungAdapter*   (*CreateUmgebungFunctionPtr)();
-    //     CreateUmgebungFunctionPtr  fCreateUmgebungFunction    = nullptr;
-    //     const char*                fCreateUmgebungFunctionStr = "create_umgebung";
-    //     typedef void               (*DestroyCallbackFunctionPtr)(UmgebungAdapter*);
-    //     DestroyCallbackFunctionPtr fDestroyUmgebungFunction    = nullptr;
-    //     const char*                fDestroyUmgebungFunctionStr = "destroy_umgebung";
-    //     typedef const char*        (*NameFunctionPtr)(UmgebungAdapter*);
-    //     NameFunctionPtr            fNameFunction    = nullptr;
-    //     const char*                fNameFunctionStr = "name";
-    //
-    //     void load_symbols() {
-    //         /* create_umgebung */
-    // #if defined ARCH_WIN
-    //         fCreateUmgebungCallback = (CreateUmgebungFunctionPtr) GetProcAddress(mHandleUmgebungSketch, fCreateUmgebungFunctionStr);
-    // #else
-    //         fCreateUmgebungFunction = (CreateUmgebungFunctionPtr) (dlsym(mHandleUmgebungSketch, fCreateUmgebungFunctionStr));
-    // #endif
-    //         if (!fCreateUmgebungFunction) {
-    //             UMGB_VCV_LOG("failed to read '%s' symbol in %s", fCreateUmgebungFunctionStr, mLibraryName.c_str());
-    //         } else {
-    //             UMGB_VCV_LOG("successfully read '%s' symbol in %s", fCreateUmgebungFunctionStr, mLibraryName.c_str());
-    //         }
-    //         /* destroy_umgebung */
-    // #if defined ARCH_WIN
-    //         fDestroyUmgebungCallback = (DestroyCallbackFunctionPtr) GetProcAddress(mHandleUmgebungSketch, fDestroyUmgebungFunctionStr);
-    // #else
-    //         fDestroyUmgebungFunction = (DestroyCallbackFunctionPtr) (dlsym(mHandleUmgebungSketch, fDestroyUmgebungFunctionStr));
-    // #endif
-    //         if (!fDestroyUmgebungFunction) {
-    //             UMGB_VCV_LOG("failed to read '%s' symbol in %s", fDestroyUmgebungFunctionStr, mLibraryName.c_str());
-    //         } else {
-    //             UMGB_VCV_LOG("successfully read '%s' symbol in %s", fDestroyUmgebungFunctionStr, mLibraryName.c_str());
-    //         }
-    //         /* name */
-    // #if defined ARCH_WIN
-    //         fNameFunction = (KLST_DestroyCallback) GetProcAddress(mHandleUmgebungSketch, fNameFunctionStr);
-    // #else
-    //         fNameFunction = (NameFunctionPtr) (dlsym(mHandleUmgebungSketch, fNameFunctionStr));
-    // #endif
-    //         if (!fNameFunction) {
-    //             UMGB_VCV_LOG("failed to read '%s' symbol in %s", fNameFunctionStr, mLibraryName.c_str());
-    //         } else {
-    //             UMGB_VCV_LOG("successfully read '%s' symbol in %s", fNameFunctionStr, mLibraryName.c_str());
-    //         }
-    //     }
 
     void load_app() {
         /* Load plugin library */
@@ -334,47 +310,37 @@ struct UmgebungModule : Module {
             }
             umgebung_app = nullptr;
         }
-#ifdef UMGEBUNG_ADAPTER
-#endif
     }
+
+    const char* get_name() const {
+        return fNameFunction == nullptr ? DEFAULT_NAME : fNameFunction(umgebung_app);
+    }
+
+    const char* DEFAULT_NAME = "NOOP";
 
     void create_app() {
         if (fCreateUmgebungFunction) {
             umgebung_app = fCreateUmgebungFunction();
-            UMGB_VCV_LOG("created app: %p", umgebung_app);
-            fNameFunction = (NameFunctionPtr) dlsym(mHandleUmgebungSketch, "name");
-            if (umgebung_app && fNameFunction) {
-                UMGB_VCV_LOG("             %s", fNameFunction(umgebung_app));
-            } else {
-                UMGB_VCV_LOG("Failed to load name symbol: %s", dlerror());
-            }
-
-#ifdef UMGEBUNG_ADAPTER
             if (umgebung_app) {
-                UMGB_VCV_LOG("created app: %s", umgebung_app->name());
-                umgebung_app = fCreateUmgebungCallback();
+                UMGB_VCV_LOG("created app: (address)%p", umgebung_app);
+                UMGB_VCV_LOG("           : (name)   %s", get_name());
                 if (mTextFieldAppName) {
-                    mTextFieldAppName->text = umgebung_app->name();
+                    mTextFieldAppName->text = get_name();
+                    return;
                 }
             }
-#endif
-        } else {
-            if (mTextFieldAppName) {
-                mTextFieldAppName->text = "NOOP";
-            }
+        }
+        if (mTextFieldAppName) {
+            mTextFieldAppName->text = DEFAULT_NAME;
         }
     }
 
     void destroy_app() {
-#ifdef UMGEBUNG_ADAPTER
-        if (fDestroyUmgebungCallback) {
-            if (umgebung_app) {
-                UMGB_VCV_LOG("destroying app: %s", umgebung_app->name());
-                fDestroyUmgebungCallback(umgebung_app);
-                mTextFieldAppName->text = "NOOP";
-            }
+        if (umgebung_app && fDestroyUmgebungFunction) {
+            UMGB_VCV_LOG("destroying app: %s", get_name());
+            fDestroyUmgebungFunction(umgebung_app);
+            mTextFieldAppName->text = DEFAULT_NAME;
         }
-#endif
     }
 
     void reload_app() {
@@ -382,15 +348,13 @@ struct UmgebungModule : Module {
         mInitializeApp = true;
     }
 
-#ifdef UMGEBUNG_ADAPTER
-#endif
 private:
     UmgebungApp* umgebung_app = nullptr;
 };
 
 struct UmgebungWidget : OpenGlWidget {
 
-    UmgebungModule* module;
+    UmgebungModule* module = nullptr;
 
     void step() override {
         // Render every frame
@@ -401,7 +365,9 @@ struct UmgebungWidget : OpenGlWidget {
     void drawFramebuffer() override {
         math::Vec fbSize = getFramebufferSize();
         glViewport(0.0, 0.0, fbSize.x, fbSize.y);
-        glClearColor(module->bg_color_red, module->bg_color_green, module->bg_color_blue, 1.0);
+        if (module) {
+            glClearColor(module->bg_color_red, module->bg_color_green, module->bg_color_blue, 1.0);
+        }
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
@@ -421,12 +387,16 @@ struct UmgebungWidget : OpenGlWidget {
         glVertex3f(padding, fbSize.y - padding, 0);
         glEnd();
 
-        module->call_draw();
+        if (module) {
+            module->call_draw();
+        } else {
+            UMGB_VCV_LOG("module not set");
+        }
     }
 };
 
 struct UmgebungModuleWidget : ModuleWidget {
-    UmgebungModuleWidget(UmgebungModule* module) {
+    explicit UmgebungModuleWidget(UmgebungModule* module) {
         UMGB_VCV_LOG("Umgebung × VCV Rack");
 
         setModule(module);
@@ -447,8 +417,8 @@ struct UmgebungModuleWidget : ModuleWidget {
         addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM));
         addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 7.5)), module, UmgebungModule::RELOAD_PARAM));
 
-        UmgebungWidget* display = new UmgebungWidget();
-        display->module         = module;
+        auto* display   = new UmgebungWidget();
+        display->module = module;
 
         std::cout << "box.pos: " << box.pos.x << ", " << box.pos.y << std::endl;
         std::cout << "box.size: " << box.size.x << ", " << box.size.y << std::endl;

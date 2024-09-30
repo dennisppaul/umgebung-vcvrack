@@ -40,7 +40,7 @@ class UmgebungApp : public PApplet {
     }
 
     void draw() override {
-        background(1);
+        // background(1);
 
         stroke(0);
         noFill();
@@ -58,9 +58,17 @@ class UmgebungApp : public PApplet {
         }
     }
 
+    void beat(uint32_t beat_count) override {
+        println("beat: ", beat_count);
+    }
+
     void keyPressed() override {
         if (key == 'q') { exit(); }
         println((char) key, " pressed");
+    }
+
+    const char* name() override {
+        return "Umgebung23";
     }
 };
 
