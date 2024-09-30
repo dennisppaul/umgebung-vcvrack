@@ -20,9 +20,9 @@ class UmgebungApp;
 
 struct UmgebungModule : Module {
 
-    float bg_color_red   = 0.0;
-    float bg_color_green = 0.0;
-    float bg_color_blue  = 0.0;
+    // float bg_color_red   = 0.0;
+    // float bg_color_green = 0.0;
+    // float bg_color_blue  = 0.0;
 
     static constexpr uint32_t SAMPLES_PER_AUDIO_BLOCK               = 512;
     float                     mLeftOutput[SAMPLES_PER_AUDIO_BLOCK]  = {0};
@@ -48,7 +48,8 @@ struct UmgebungModule : Module {
 #endif
 
     enum ParamId {
-        PITCH_PARAM,
+        PITCH_PARAM_1,
+        PITCH_PARAM_2,
         RELOAD_PARAM,
         PARAMS_LEN
     };
@@ -84,6 +85,7 @@ struct UmgebungModule : Module {
             UMGB_VCV_LOG("could not load symbols");
         }
         create_app();
+        update_app_name();
     }
 
     UmgebungModule() {
@@ -96,7 +98,8 @@ struct UmgebungModule : Module {
         handle_umgebung_app();
 
         config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-        configParam(PITCH_PARAM, 0.f, 1.f, 0.f, "");
+        configParam(PITCH_PARAM_1, 0.f, 1.f, 0.f, "");
+        configParam(PITCH_PARAM_2, 0.f, 1.f, 0.f, "");
         configInput(LEFT_INPUT, "");
         configInput(RIGHT_INPUT, "");
         configOutput(LEFT_OUTPUT, "");
@@ -164,9 +167,9 @@ struct UmgebungModule : Module {
         }
         mBangReloadButtonState = params[RELOAD_PARAM].getValue();
 
-        bg_color_red   = inputs[LEFT_INPUT].getVoltage() / 5.0f;
-        bg_color_green = inputs[RIGHT_INPUT].getVoltage() / 5.0f;
-        bg_color_blue  = params[PITCH_PARAM].getValue();
+        // TODO pass this on as an event
+        float bg_color_green = params[PITCH_PARAM_1].getValue();
+        float bg_color_blue  = params[PITCH_PARAM_2].getValue();
 
         // outputs[LEFT_OUTPUT].setVoltage(inputs[LEFT_INPUT].getVoltage());  // pass through
         // outputs[RIGHT_OUTPUT].setVoltage(inputs[RIGHT_INPUT].getVoltage()); // pass through
@@ -318,20 +321,15 @@ struct UmgebungModule : Module {
 
     const char* DEFAULT_NAME = "NOOP";
 
+    void update_app_name() {
+        if (umgebung_app && fNameFunction && mTextFieldAppName) {
+            mTextFieldAppName->text = fNameFunction(umgebung_app);
+        }
+    }
+
     void create_app() {
         if (fCreateUmgebungFunction) {
             umgebung_app = fCreateUmgebungFunction();
-            if (umgebung_app) {
-                UMGB_VCV_LOG("created app: (address)%p", umgebung_app);
-                UMGB_VCV_LOG("           : (name)   %s", get_name());
-                if (mTextFieldAppName) {
-                    mTextFieldAppName->text = get_name();
-                    return;
-                }
-            }
-        }
-        if (mTextFieldAppName) {
-            mTextFieldAppName->text = DEFAULT_NAME;
         }
     }
 
@@ -339,7 +337,9 @@ struct UmgebungModule : Module {
         if (umgebung_app && fDestroyUmgebungFunction) {
             UMGB_VCV_LOG("destroying app: %s", get_name());
             fDestroyUmgebungFunction(umgebung_app);
-            mTextFieldAppName->text = DEFAULT_NAME;
+            if (mTextFieldAppName) {
+                mTextFieldAppName->text = DEFAULT_NAME;
+            }
         }
     }
 
@@ -365,27 +365,30 @@ struct UmgebungWidget : OpenGlWidget {
     void drawFramebuffer() override {
         math::Vec fbSize = getFramebufferSize();
         glViewport(0.0, 0.0, fbSize.x, fbSize.y);
-        if (module) {
-            glClearColor(module->bg_color_red, module->bg_color_green, module->bg_color_blue, 1.0);
-        }
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        // glClearColor(0, 0, 0, 1.0);
+        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        // glClearColor(module->bg_color_red, module->bg_color_green, module->bg_color_blue, 1.0);
+        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         glOrtho(0.0, fbSize.x, 0.0, fbSize.y, -1.0, 1.0);
+        glScalef(1.0, -1.0, 1.0);
+        glTranslatef(0.0, -fbSize.y, 0.0);
 
         //         std::cout << "fbSize: " << fbSize.x << ", " << fbSize.y << std::endl; // 317, 245
 
-        constexpr float padding = 2 * 15.24;
-        glColor3f(1, 1, 1);
-        glBegin(GL_TRIANGLES);
-        glVertex3f(padding, padding, 0);
-        glVertex3f(fbSize.x - padding, padding, 0);
-        glVertex3f(padding, fbSize.y - padding, 0);
-        glVertex3f(fbSize.x - padding, fbSize.y - padding, 0);
-        glVertex3f(fbSize.x - padding, padding, 0);
-        glVertex3f(padding, fbSize.y - padding, 0);
-        glEnd();
+        // constexpr float padding = 2 * 15.24;
+        // glColor3f(1, 1, 1);
+        // glBegin(GL_TRIANGLES);
+        // glVertex3f(padding, padding, 0);
+        // glVertex3f(fbSize.x - padding, padding, 0);
+        // glVertex3f(padding, fbSize.y - padding, 0);
+        // glVertex3f(fbSize.x - padding, fbSize.y - padding, 0);
+        // glVertex3f(fbSize.x - padding, padding, 0);
+        // glVertex3f(padding, fbSize.y - padding, 0);
+        // glEnd();
 
         if (module) {
             module->call_draw();
@@ -407,21 +410,33 @@ struct UmgebungModuleWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-
-        constexpr float M_GRID_SIZE = 15.24;
+        constexpr float M_GRID_SIZE  = 15.24;
+        constexpr float M_GRID_ROW_2 = 26.529;
 
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 2)), module, UmgebungModule::LEFT_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 3)), module, UmgebungModule::RIGHT_INPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 5)), module, UmgebungModule::LEFT_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 6)), module, UmgebungModule::RIGHT_OUTPUT));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 2)), module, UmgebungModule::RIGHT_INPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 6)), module, UmgebungModule::LEFT_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 6)), module, UmgebungModule::RIGHT_OUTPUT));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM_1));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM_2));
         addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 7.5)), module, UmgebungModule::RELOAD_PARAM));
+
+        if (module) {
+            module->mTextFieldAppName            = createWidget<LedDisplayTextField>(mm2px(Vec(32.595, 107.466)));
+            module->mTextFieldAppName->box.size  = mm2px(Vec(M_GRID_SIZE * 3.5f, M_GRID_SIZE * 0.66f));
+            module->mTextFieldAppName->multiline = false;
+            module->mTextFieldAppName->color     = color::BLACK;
+            module->mTextFieldAppName->bgColor   = color::YELLOW;
+            addChild(module->mTextFieldAppName);
+            module->update_app_name();
+        }
 
         auto* display   = new UmgebungWidget();
         display->module = module;
 
-        std::cout << "box.pos: " << box.pos.x << ", " << box.pos.y << std::endl;
-        std::cout << "box.size: " << box.size.x << ", " << box.size.y << std::endl;
+        std::cout << "RACK_GRID_WIDTH: " << RACK_GRID_WIDTH << std::endl;
+        std::cout << "box.pos        : " << box.pos.x << ", " << box.pos.y << std::endl;
+        std::cout << "box.size       : " << box.size.x << ", " << box.size.y << std::endl;
 
         display->box.pos  = Vec(M_GRID_SIZE, (RACK_GRID_HEIGHT / 8) - 10);
         display->box.size = Vec(box.size.x - 190, RACK_GRID_HEIGHT - 80);
@@ -429,17 +444,24 @@ struct UmgebungModuleWidget : ModuleWidget {
         std::cout << "display->box.pos: " << display->box.pos.x << ", " << display->box.pos.y << std::endl;
         std::cout << "display->box.size: " << display->box.size.x << ", " << display->box.size.y << std::endl;
 
-        display->setSize(Vec(158 * 2, 122 * 2)); // fbSize 1580,1220
-        display->setPosition(Vec(M_GRID_SIZE * 6, M_GRID_SIZE * 3));
-        addChild(display);
+        /*
+        box.pos: 0, 0
+        box.size: 450, 380
+        display->box.pos: 15.24, 37.5
+        display->box.size: 260, 300
+        mDisplaySize: 323.666, 220.789
+        */
 
-        if (module) {
-            module->mTextFieldAppName            = createWidget<LedDisplayTextField>(mm2px(Vec(M_GRID_SIZE * 2, M_GRID_SIZE * 7.15)));
-            module->mTextFieldAppName->box.size  = mm2px(Vec(RACK_GRID_WIDTH * 3.5, RACK_GRID_WIDTH * 0.66));
-            module->mTextFieldAppName->multiline = false;
-            module->mTextFieldAppName->color     = color::BLACK;
-            addChild(module->mTextFieldAppName);
-        }
+        Vec mDisplaySize     = mm2px(Vec(109.615, 74.774));
+        Vec mDisplayPosition = mm2px(Vec(32.595, 21.684));
+        std::cout << "mDisplaySize    : " << mDisplaySize.x << ", " << mDisplaySize.y << std::endl;
+        std::cout << "mDisplayPosition: " << mDisplayPosition.x << ", " << mDisplayPosition.y << std::endl;
+
+        display->setSize(mDisplaySize);
+        display->setPosition(mDisplayPosition);
+        // display->setSize(Vec(158 * 2, 122 * 2)); // fbSize 1580,1220
+        // display->setPosition(Vec(M_GRID_SIZE * 6, M_GRID_SIZE * 3));
+        addChild(display);
     }
 };
 
