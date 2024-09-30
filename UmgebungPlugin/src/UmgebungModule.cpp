@@ -2,17 +2,21 @@
 #include <iostream>
 #include "plugin.hpp"
 
-#define KLST_VCV_DEBUG
-#ifdef KLST_VCV_DEBUG
-#define KLST_VCV_LOG(...) \
+#define UMGB_VCV_DEBUG
+#ifdef UMGB_VCV_DEBUG
+#define UMGB_VCV_LOG(...) \
+    printf("\033[32m");   \
     printf("+++ ");       \
     printf(__VA_ARGS__);  \
+    printf("\033[0m");    \
     printf("\n");
 #else
-#define KLST_VCV_LOG(...)
+#define UMGB_VCV_LOG(...)
 #endif
 
 uint8_t mInstanceCounter = 0;
+
+class UmgebungApp;
 
 struct UmgebungModule : Module {
 
@@ -32,34 +36,37 @@ struct UmgebungModule : Module {
     uint16_t mSampleCollectorCounter = 0;
     uint32_t mBeatCounter            = 0;
 
-    LedDisplayTextField* mTextFieldAppName   = 0;
-    std::string          mLibraryName        = "dep/libUmgebungSketch";
+    LedDisplayTextField* mTextFieldAppName   = nullptr;
+    std::string          mLibraryName        = "dep/libUmgebungApp";
     bool                 mInitializeApp      = true;
     bool                 mAllocateAudioblock = true;
 
 #if defined ARCH_WIN
     HINSTANCE mHandleUmgebungSketch = 0;
 #else
-    void* mHandleUmgebungSketch = 0;
+    void* mHandleUmgebungSketch = nullptr;
 #endif
 
-    typedef void       (*KLST_SetupCallback)(void);
-    KLST_SetupCallback mSetupCallback = nullptr;
+    // typedef void       (*KLST_SetupCallback)(void);
+    // KLST_SetupCallback mSetupCallback = nullptr;
+    //
+    // typedef void      (*KLST_LoopCallback)(void);
+    // KLST_LoopCallback mLoopCallback = nullptr;
+    //
+    // typedef void      (*KLST_DrawCallback)(void);
+    // KLST_DrawCallback mDrawCallback = nullptr;
+    //
+    // typedef void      (*KLST_BeatCallback)(uint32_t);
+    // KLST_BeatCallback mBeatCallback = nullptr;
+    //
+    // typedef void            (*KLST_AudioblockCallback)(float**, float**, uint32_t);
+    // KLST_AudioblockCallback mAudioblockCallback = nullptr;
+    //
+    // typedef const char* (*KLST_NameCallback)(void);
+    // KLST_NameCallback   mNameCallback = nullptr;
 
-    typedef void      (*KLST_LoopCallback)(void);
-    KLST_LoopCallback mLoopCallback = nullptr;
-
-    typedef void      (*KLST_DrawCallback)(void);
-    KLST_DrawCallback mDrawCallback = nullptr;
-
-    typedef void      (*KLST_BeatCallback)(uint32_t);
-    KLST_BeatCallback mBeatCallback = nullptr;
-
-    typedef void            (*KLST_AudioblockCallback)(float**, float**, uint32_t);
-    KLST_AudioblockCallback mAudioblockCallback = nullptr;
-
-    typedef const char* (*KLST_NameCallback)(void);
-    KLST_NameCallback   mNameCallback = nullptr;
+#ifdef UMGEBUNG_ADAPTER
+#endif
 
     enum ParamId {
         PITCH_PARAM,
@@ -81,22 +88,33 @@ struct UmgebungModule : Module {
         LIGHTS_LEN
     };
 
-    UmgebungModule() {
+    void handle_umgebung_app() {
+        try {
+            unload_app();
+        } catch (Exception e) {
+            UMGB_VCV_LOG("could not unload app");
+        }
         try {
             load_app();
         } catch (Exception e) {
-            KLST_VCV_LOG("could not load app");
+            UMGB_VCV_LOG("could not load app");
         }
         try {
             load_symbols();
         } catch (Exception e) {
-            KLST_VCV_LOG("could not load symbols");
+            UMGB_VCV_LOG("could not load symbols");
         }
+        create_app();
+    }
+
+    UmgebungModule() {
         mInstanceCounter++;
         if (mInstanceCounter > 1) {
-            KLST_VCV_LOG("mInstanceCounter: %i", mInstanceCounter);
-            throw Exception(string::f("multiple instances of plugins are currently not supported."));
+            UMGB_VCV_LOG("mInstanceCounter: %i", mInstanceCounter);
+            UMGB_VCV_LOG("WARNING multiple instances of plugins are currently not supported.");
+            // throw Exception(string::f("multiple instances of plugins are currently not supported."));
         }
+        handle_umgebung_app();
 
         config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
         configParam(PITCH_PARAM, 0.f, 1.f, 0.f, "");
@@ -107,7 +125,11 @@ struct UmgebungModule : Module {
     }
 
     ~UmgebungModule() {
-        unload_app();
+        try {
+            unload_app();
+        } catch (Exception e) {
+            UMGB_VCV_LOG("could not unload app");
+        }
         if (mInstanceCounter > 0) {
             mInstanceCounter--;
         }
@@ -115,14 +137,11 @@ struct UmgebungModule : Module {
 
     void process(const ProcessArgs& args) override {
         if (mInitializeApp) {
-            if (mNameCallback != nullptr) {
-                mTextFieldAppName->text = mNameCallback();
-            } else {
-                mTextFieldAppName->text = "NOOP";
+#ifdef UMGEBUNG_ADAPTER
+            if (umgebung_app) {
+                umgebung_app->setup();
             }
-            if (mSetupCallback != nullptr) {
-                mSetupCallback();
-            }
+#endif
             mInitializeApp = false;
         }
 
@@ -157,10 +176,12 @@ struct UmgebungModule : Module {
         mBeatTriggerCounter += args.sampleTime;
         if (mBeatTriggerCounter >= mBeatDurationSec) {
             mBeatTriggerCounter -= mBeatDurationSec;
-            if (mBeatCallback != nullptr) {
-                mBeatCallback(mBeatCounter);
+#ifdef UMGEBUNG_ADAPTER
+            if (umgebung_app) {
+                // umgebung_app->beat(mBeatCounter);
                 mBeatCounter++;
             }
+#endif
         }
 
         // Blink light at 1Hz
@@ -171,91 +192,94 @@ struct UmgebungModule : Module {
         }
         lights[BLINK_LIGHT].setBrightness(blinkPhase < 0.5f ? 1.f : 0.f);
 
-        if (mLoopCallback != nullptr) {
-            mLoopCallback();
+#ifdef UMGEBUNG_ADAPTER
+        if (umgebung_app) {
+            umgebung_app->loop();
         }
+#endif
     }
 
     void call_draw() {
-        if (mDrawCallback != nullptr) {
-            mDrawCallback();
+#ifdef UMGEBUNG_ADAPTER
+        if (umgebung_app) {
+            umgebung_app->draw();
+        }
+#endif
+    }
+
+    template<typename T>
+    static void load_symbol(void* handle, const char* symbol_name, T& function_ptr, const std::string& library_name) {
+#if defined ARCH_WIN
+        function_ptr = (T) GetProcAddress((HINSTANCE) handle, symbol_name);
+#else
+        function_ptr = (T) dlsym(handle, symbol_name);
+#endif
+        if (!function_ptr) {
+            UMGB_VCV_LOG("failed to read '%s' symbol in %s", symbol_name, library_name.c_str());
+        } else {
+            UMGB_VCV_LOG("successfully read '%s' symbol in %s", symbol_name, library_name.c_str());
         }
     }
+
+    typedef UmgebungApp* (*CreateUmgebungFunctionPtr)();
+    typedef void         (*DestroyCallbackFunctionPtr)(UmgebungApp*);
+    typedef const char*  (*NameFunctionPtr)(UmgebungApp*);
+
+    CreateUmgebungFunctionPtr  fCreateUmgebungFunction  = nullptr;
+    DestroyCallbackFunctionPtr fDestroyUmgebungFunction = nullptr;
+    NameFunctionPtr            fNameFunction            = nullptr;
 
     void load_symbols() {
-        load_symbol_setup();
-        load_symbol_loop();
-        load_symbol_draw();
-        load_symbol_beat();
-        load_symbol_audioblock();
-        load_symbol_name();
+        load_symbol(mHandleUmgebungSketch, "create_umgebung", fCreateUmgebungFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "destroy_umgebung", fDestroyUmgebungFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "name", fNameFunction, mLibraryName);
     }
 
-    void load_symbol_setup() {
-#if defined ARCH_WIN
-        mSetupCallback = (KLST_SetupCallback) GetProcAddress(mHandleUmgebungSketch, "setup");
-#else
-        mSetupCallback = (KLST_SetupCallback) dlsym(mHandleUmgebungSketch, "setup");
-#endif
-        if (!mSetupCallback) {
-            KLST_VCV_LOG("Failed to read `setup` symbol in %s", mLibraryName.c_str());
-        }
-    }
-
-    void load_symbol_loop() {
-#if defined ARCH_WIN
-        mLoopCallback = (KLST_LoopCallback) GetProcAddress(mHandleUmgebungSketch, "loop");
-#else
-        mLoopCallback = (KLST_LoopCallback) dlsym(mHandleUmgebungSketch, "loop");
-#endif
-        if (!mLoopCallback) {
-            KLST_VCV_LOG("Failed to read `loop` symbol in %s", mLibraryName.c_str());
-        }
-    }
-
-    void load_symbol_draw() {
-#if defined ARCH_WIN
-        mDrawCallback = (KLST_DrawCallback) GetProcAddress(mHandleUmgebungSketch, "draw");
-#else
-        mDrawCallback = (KLST_DrawCallback) dlsym(mHandleUmgebungSketch, "draw");
-#endif
-        if (!mDrawCallback) {
-            KLST_VCV_LOG("Failed to read `draw` symbol in %s", mLibraryName.c_str());
-        }
-    }
-
-    void load_symbol_beat() {
-#if defined ARCH_WIN
-        mBeatCallback = (KLST_BeatCallback) GetProcAddress(mHandleUmgebungSketch, "beat");
-#else
-        mBeatCallback = (KLST_BeatCallback) dlsym(mHandleUmgebungSketch, "beat");
-#endif
-        if (!mBeatCallback) {
-            KLST_VCV_LOG("Failed to read `beat` symbol in %s", mLibraryName.c_str());
-        }
-    }
-
-    void load_symbol_audioblock() {
-#if defined ARCH_WIN
-        mAudioblockCallback = (KLST_AudioblockCallback) GetProcAddress(mHandleUmgebungSketch, "audioblock");
-#else
-        mAudioblockCallback = (KLST_AudioblockCallback) dlsym(mHandleUmgebungSketch, "audioblock");
-#endif
-        if (!mAudioblockCallback) {
-            KLST_VCV_LOG("Failed to read `audioblock` symbol in %s", mLibraryName.c_str());
-        }
-    }
-
-    void load_symbol_name() {
-#if defined ARCH_WIN
-        mNameCallback = (KLST_NameCallback) GetProcAddress(mHandleUmgebungSketch, "name");
-#else
-        mNameCallback = (KLST_NameCallback) dlsym(mHandleUmgebungSketch, "name");
-#endif
-        if (!mNameCallback) {
-            KLST_VCV_LOG("Failed to read `name` symbol in %s", mLibraryName.c_str());
-        }
-    }
+    //     typedef UmgebungAdapter*   (*CreateUmgebungFunctionPtr)();
+    //     CreateUmgebungFunctionPtr  fCreateUmgebungFunction    = nullptr;
+    //     const char*                fCreateUmgebungFunctionStr = "create_umgebung";
+    //     typedef void               (*DestroyCallbackFunctionPtr)(UmgebungAdapter*);
+    //     DestroyCallbackFunctionPtr fDestroyUmgebungFunction    = nullptr;
+    //     const char*                fDestroyUmgebungFunctionStr = "destroy_umgebung";
+    //     typedef const char*        (*NameFunctionPtr)(UmgebungAdapter*);
+    //     NameFunctionPtr            fNameFunction    = nullptr;
+    //     const char*                fNameFunctionStr = "name";
+    //
+    //     void load_symbols() {
+    //         /* create_umgebung */
+    // #if defined ARCH_WIN
+    //         fCreateUmgebungCallback = (CreateUmgebungFunctionPtr) GetProcAddress(mHandleUmgebungSketch, fCreateUmgebungFunctionStr);
+    // #else
+    //         fCreateUmgebungFunction = (CreateUmgebungFunctionPtr) (dlsym(mHandleUmgebungSketch, fCreateUmgebungFunctionStr));
+    // #endif
+    //         if (!fCreateUmgebungFunction) {
+    //             UMGB_VCV_LOG("failed to read '%s' symbol in %s", fCreateUmgebungFunctionStr, mLibraryName.c_str());
+    //         } else {
+    //             UMGB_VCV_LOG("successfully read '%s' symbol in %s", fCreateUmgebungFunctionStr, mLibraryName.c_str());
+    //         }
+    //         /* destroy_umgebung */
+    // #if defined ARCH_WIN
+    //         fDestroyUmgebungCallback = (DestroyCallbackFunctionPtr) GetProcAddress(mHandleUmgebungSketch, fDestroyUmgebungFunctionStr);
+    // #else
+    //         fDestroyUmgebungFunction = (DestroyCallbackFunctionPtr) (dlsym(mHandleUmgebungSketch, fDestroyUmgebungFunctionStr));
+    // #endif
+    //         if (!fDestroyUmgebungFunction) {
+    //             UMGB_VCV_LOG("failed to read '%s' symbol in %s", fDestroyUmgebungFunctionStr, mLibraryName.c_str());
+    //         } else {
+    //             UMGB_VCV_LOG("successfully read '%s' symbol in %s", fDestroyUmgebungFunctionStr, mLibraryName.c_str());
+    //         }
+    //         /* name */
+    // #if defined ARCH_WIN
+    //         fNameFunction = (KLST_DestroyCallback) GetProcAddress(mHandleUmgebungSketch, fNameFunctionStr);
+    // #else
+    //         fNameFunction = (NameFunctionPtr) (dlsym(mHandleUmgebungSketch, fNameFunctionStr));
+    // #endif
+    //         if (!fNameFunction) {
+    //             UMGB_VCV_LOG("failed to read '%s' symbol in %s", fNameFunctionStr, mLibraryName.c_str());
+    //         } else {
+    //             UMGB_VCV_LOG("successfully read '%s' symbol in %s", fNameFunctionStr, mLibraryName.c_str());
+    //         }
+    //     }
 
     void load_app() {
         /* Load plugin library */
@@ -267,7 +291,7 @@ struct UmgebungModule : Module {
 #elif ARCH_MAC
         mAppLibraryFilename = pluginInstance->path + "/" + mLibraryName + ".dylib";
 #endif
-        KLST_VCV_LOG("loading app from file: %s", mAppLibraryFilename.c_str());
+        UMGB_VCV_LOG("loading app from file: %s", mAppLibraryFilename.c_str());
 
         /* Check file existence */
         if (!system::isFile(mAppLibraryFilename)) {
@@ -293,37 +317,75 @@ struct UmgebungModule : Module {
     }
 
     void unload_app() {
-        /* close the library */
-        KLST_VCV_LOG("unloading app: %llu ", (uint64_t) (mHandleUmgebungSketch));
-        mSetupCallback      = nullptr;
-        mLoopCallback       = nullptr;
-        mDrawCallback       = nullptr;
-        mBeatCallback       = nullptr;
-        mAudioblockCallback = nullptr;
-        mNameCallback       = nullptr;
+        if (umgebung_app) {
+            /* close the library */
+            UMGB_VCV_LOG("unloading app: %p ", mHandleUmgebungSketch);
+            destroy_app();
 
-        if (mHandleUmgebungSketch) {
+            fCreateUmgebungFunction  = nullptr;
+            fDestroyUmgebungFunction = nullptr;
+            if (mHandleUmgebungSketch) {
 #if defined ARCH_WIN
-            FreeLibrary((HINSTANCE) mHandleUmgebungSketch);
+                FreeLibrary((HINSTANCE) mHandleUmgebungSketch);
 #else
-            dlclose(mHandleUmgebungSketch);
+                dlclose(mHandleUmgebungSketch);
 #endif
-            mHandleUmgebungSketch = nullptr;
+                mHandleUmgebungSketch = nullptr;
+            }
+            umgebung_app = nullptr;
         }
+#ifdef UMGEBUNG_ADAPTER
+#endif
+    }
+
+    void create_app() {
+        if (fCreateUmgebungFunction) {
+            umgebung_app = fCreateUmgebungFunction();
+            UMGB_VCV_LOG("created app: %p", umgebung_app);
+            fNameFunction = (NameFunctionPtr) dlsym(mHandleUmgebungSketch, "name");
+            if (umgebung_app && fNameFunction) {
+                UMGB_VCV_LOG("             %s", fNameFunction(umgebung_app));
+            } else {
+                UMGB_VCV_LOG("Failed to load name symbol: %s", dlerror());
+            }
+
+#ifdef UMGEBUNG_ADAPTER
+            if (umgebung_app) {
+                UMGB_VCV_LOG("created app: %s", umgebung_app->name());
+                umgebung_app = fCreateUmgebungCallback();
+                if (mTextFieldAppName) {
+                    mTextFieldAppName->text = umgebung_app->name();
+                }
+            }
+#endif
+        } else {
+            if (mTextFieldAppName) {
+                mTextFieldAppName->text = "NOOP";
+            }
+        }
+    }
+
+    void destroy_app() {
+#ifdef UMGEBUNG_ADAPTER
+        if (fDestroyUmgebungCallback) {
+            if (umgebung_app) {
+                UMGB_VCV_LOG("destroying app: %s", umgebung_app->name());
+                fDestroyUmgebungCallback(umgebung_app);
+                mTextFieldAppName->text = "NOOP";
+            }
+        }
+#endif
     }
 
     void reload_app() {
-        unload_app();
-        load_app();
-        load_symbols();
-        if (mNameCallback != nullptr) {
-            KLST_VCV_LOG("set new name: %s", mNameCallback());
-            mTextFieldAppName->text = mNameCallback();
-        } else {
-            mTextFieldAppName->text = "NOOP";
-        }
+        handle_umgebung_app();
         mInitializeApp = true;
     }
+
+#ifdef UMGEBUNG_ADAPTER
+#endif
+private:
+    UmgebungApp* umgebung_app = nullptr;
 };
 
 struct UmgebungWidget : OpenGlWidget {
@@ -365,7 +427,7 @@ struct UmgebungWidget : OpenGlWidget {
 
 struct UmgebungModuleWidget : ModuleWidget {
     UmgebungModuleWidget(UmgebungModule* module) {
-        std::cout << "hello VCV Rack" << std::endl;
+        UMGB_VCV_LOG("Umgebung × VCV Rack");
 
         setModule(module);
         setPanel(createPanel(asset::plugin(pluginInstance, "res/UmgebungModule.svg")));

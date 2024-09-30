@@ -16,7 +16,7 @@
     {
       "slug": "UmgebungModule",
       "name": "UmgebungModule",
-      "description": "Host for Umgebung Sketches",
+      "description": "Host for Umgebung Applications",
       "tags": [
         "Utility"
       ]
