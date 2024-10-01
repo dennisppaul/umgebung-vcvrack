@@ -5,17 +5,9 @@ using namespace umgebung;
 
 class UmgebungApp : public PApplet {
 
-    PShape mShape;
+    PFont* mFont   = nullptr;
     int    mWidth  = 1024;
     int    mHeight = 768;
-
-    void arguments(std::vector<std::string> args) override {
-        for (std::string& s: args) {
-            println("> ", s);
-            if (begins_with(s, "--width")) { mWidth = get_int_from_argument(s); }
-            if (begins_with(s, "--height")) { mHeight = get_int_from_argument(s); }
-        }
-    }
 
     void settings() override {
         size(mWidth, mHeight);
@@ -23,18 +15,20 @@ class UmgebungApp : public PApplet {
         audio_output_device   = DEFAULT_AUDIO_DEVICE;
         audio_input_channels  = DEFAULT_NUMBER_OF_INPUT_CHANNELS;
         audio_output_channels = DEFAULT_NUMBER_OF_OUTPUT_CHANNELS;
-        monitor               = 0;
-        fullscreen            = false;
-        borderless            = true;
-        antialiasing          = 8;
-        resizable             = false;
-        always_on_top         = true;
-        enable_retina_support = true;
-        headless              = false;
-        no_audio              = false;
     }
 
     void setup() override {
+        const std::vector search_paths = {
+            get_executable_location() + "../..",
+            get_executable_location() + "..",
+            get_executable_location() + "."};
+        const std::string mFontFile = find_file_in_paths(search_paths, "RobotoMono-Regular.ttf");
+        if (!mFontFile.empty()) {
+            std::cout << "found font at: " << mFontFile << std::endl;
+            mFont = loadFont(mFontFile, 280);
+            textFont(mFont);
+        }
+
         println("width : ", width);
         println("height: ", height);
     }
@@ -49,6 +43,14 @@ class UmgebungApp : public PApplet {
         noStroke();
         fill(random(0, 0.2));
         rect(20, 20, width / 2 - 40, height / 2 - 40);
+
+        fill(0, 0.5f, 1);
+        text("23", 20, height - 20);
+
+        circle(0, 0, 20);
+        circle(width, 0, 20);
+        circle(width, height, 20);
+        circle(0, height, 20);
     }
 
     void audioblock(float** input, float** output, int length) override {
@@ -59,7 +61,7 @@ class UmgebungApp : public PApplet {
     }
 
     void beat(uint32_t beat_count) override {
-        println("beat: ", beat_count);
+        // println("beat: ", beat_count);
     }
 
     void keyPressed() override {
@@ -68,7 +70,7 @@ class UmgebungApp : public PApplet {
     }
 
     const char* name() override {
-        return "Umgebung23";
+        return "Umgebung42";
     }
 };
 

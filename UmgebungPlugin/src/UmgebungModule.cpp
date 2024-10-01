@@ -1,5 +1,9 @@
+// TODO add CV 2 inputs and 2 outputs
+// TODO propagate knobs to sketch as `event(float*, uint8_t)`?
+
 #include <dlfcn.h>
 #include <iostream>
+#include <osdialog.h>
 #include "plugin.hpp"
 
 #define UMGB_VCV_DEBUG
@@ -31,6 +35,7 @@ struct UmgebungModule : Module {
     float                     mRightInput[SAMPLES_PER_AUDIO_BLOCK]  = {0};
 
     float    mBangReloadButtonState  = 0.0f;
+    float    mBangLoadAppButtonState = 0.0f;
     float    mBeatTriggerCounter     = 0.0f;
     float    mBeatDurationSec        = 0.125f;
     uint16_t mSampleCollectorCounter = 0;
@@ -51,6 +56,7 @@ struct UmgebungModule : Module {
         PITCH_PARAM_1,
         PITCH_PARAM_2,
         RELOAD_PARAM,
+        LOAD_APP,
         PARAMS_LEN
     };
     enum InputId {
@@ -166,6 +172,29 @@ struct UmgebungModule : Module {
             reload_app();
         }
         mBangReloadButtonState = params[RELOAD_PARAM].getValue();
+
+        if (params[LOAD_APP].getValue() > mBangLoadAppButtonState) {
+            UMGB_VCV_LOG("loading app");
+            // from Wavetable.hpp
+            static const char WAVETABLE_FILTERS[] = "WAV (.wav):wav,WAV;Raw:f32,i8,i16,i24,i32,*";
+            osdialog_filters* filters             = osdialog_filters_parse(WAVETABLE_FILTERS);
+            // std::string       wavetableDir;
+            char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);
+            // char* pathC = osdialog_file(OSDIALOG_OPEN, wavetableDir.empty() ? NULL : wavetableDir.c_str(), NULL, filters);
+            if (!pathC) {
+                // Fail silently
+                return;
+            }
+            std::string path = pathC;
+            std::free(pathC);
+            std::string wavetableDir = system::getDirectory(path);
+            // load(path);
+            std::string filename;
+            filename = system::getFilename(path);
+            UMGB_VCV_LOG("dir path: %s", wavetableDir.c_str());
+            UMGB_VCV_LOG("filename: %s", filename.c_str());
+        }
+        mBangLoadAppButtonState = params[LOAD_APP].getValue();
 
         // TODO pass this on as an event
         float bg_color_green = params[PITCH_PARAM_1].getValue();
@@ -411,15 +440,17 @@ struct UmgebungModuleWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         constexpr float M_GRID_SIZE  = 15.24;
+        constexpr float M_GRID_ROW_1 = M_GRID_SIZE;
         constexpr float M_GRID_ROW_2 = 26.529;
 
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 2)), module, UmgebungModule::LEFT_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 2)), module, UmgebungModule::LEFT_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 2)), module, UmgebungModule::RIGHT_INPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 6)), module, UmgebungModule::LEFT_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 6)), module, UmgebungModule::LEFT_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 6)), module, UmgebungModule::RIGHT_OUTPUT));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM_1));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM_1));
         addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM_2));
-        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_SIZE, M_GRID_SIZE * 7.5)), module, UmgebungModule::RELOAD_PARAM));
+        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 7.5)), module, UmgebungModule::RELOAD_PARAM));
+        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 7.5)), module, UmgebungModule::LOAD_APP));
 
         if (module) {
             module->mTextFieldAppName            = createWidget<LedDisplayTextField>(mm2px(Vec(32.595, 107.466)));
@@ -462,6 +493,7 @@ struct UmgebungModuleWidget : ModuleWidget {
         // display->setSize(Vec(158 * 2, 122 * 2)); // fbSize 1580,1220
         // display->setPosition(Vec(M_GRID_SIZE * 6, M_GRID_SIZE * 3));
         addChild(display);
+        std::cout << "framebuffer size: " << display->getFramebufferSize().x << ", " << display->getFramebufferSize().y << std::endl;
     }
 };
 
