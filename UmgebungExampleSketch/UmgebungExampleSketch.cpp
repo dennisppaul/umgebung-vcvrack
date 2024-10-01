@@ -55,8 +55,6 @@ class UmgebungApp : public PApplet {
 
         circle(width / 2 - 15, height / 2 + mKnobA * 100, mCircleDiameterA);
         circle(width / 2 + 15, height / 2 + mKnobB * 100, mCircleDiameterB);
-
-        fill(1);
     }
 
     void audioblock(float** input, float** output, int length) override {
