@@ -6,8 +6,8 @@ using namespace umgebung;
 class UmgebungApp : public PApplet {
 
     PFont* mFont   = nullptr;
-    int    mWidth  = 1024;
-    int    mHeight = 768;
+    int    mWidth  = static_cast<int>(323.666);
+    int    mHeight = static_cast<int>(220.789);
 
     void settings() override {
         size(mWidth, mHeight);
@@ -25,7 +25,7 @@ class UmgebungApp : public PApplet {
         const std::string mFontFile = find_file_in_paths(search_paths, "RobotoMono-Regular.ttf");
         if (!mFontFile.empty()) {
             std::cout << "found font at: " << mFontFile << std::endl;
-            mFont = loadFont(mFontFile, 280);
+            mFont = loadFont(mFontFile, 200);
             textFont(mFont);
         }
 
@@ -47,10 +47,16 @@ class UmgebungApp : public PApplet {
         fill(0, 0.5f, 1);
         text("23", 20, height - 20);
 
+        fill(0, 0.5f, 1);
         circle(0, 0, 20);
         circle(width, 0, 20);
         circle(width, height, 20);
         circle(0, height, 20);
+
+        circle(width / 2 - 15, height / 2 + mKnobA * 100, mCircleDiameterA);
+        circle(width / 2 + 15, height / 2 + mKnobB * 100, mCircleDiameterB);
+
+        fill(1);
     }
 
     void audioblock(float** input, float** output, int length) override {
@@ -67,6 +73,28 @@ class UmgebungApp : public PApplet {
     void keyPressed() override {
         if (key == 'q') { exit(); }
         println((char) key, " pressed");
+    }
+
+    enum { LEFT_CV_INPUT_POS,
+           RIGHT_CV_INPUT_POS,
+           LEFT_CV_OUTPUT_POS,
+           RIGHT_CV_OUTPUT_POS,
+           KNOB_PARAM_A_POS,
+           KNOB_PARAM_B_POS,
+           CV_POS_LEN };
+
+    float mCircleDiameterA = 0;
+    float mCircleDiameterB = 0;
+    float mKnobA           = 0;
+    float mKnobB           = 0;
+
+    void event(float* data, const uint32_t length) override {
+        if (length == CV_POS_LEN) {
+            mCircleDiameterA = map(data[LEFT_CV_INPUT_POS], -5, 5, 10, 30);
+            mCircleDiameterB = map(data[RIGHT_CV_INPUT_POS], -5, 5, 10, 30);
+            mKnobA           = data[KNOB_PARAM_A_POS];
+            mKnobB           = data[KNOB_PARAM_B_POS];
+        }
     }
 
     const char* name() override {

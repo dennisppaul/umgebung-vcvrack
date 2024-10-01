@@ -18,15 +18,11 @@
 #define UMGB_VCV_LOG(...)
 #endif
 
-uint8_t mInstanceCounter = 0;
+// uint8_t mInstanceCounter = 0;
 
 class UmgebungApp;
 
 struct UmgebungModule : Module {
-
-    // float bg_color_red   = 0.0;
-    // float bg_color_green = 0.0;
-    // float bg_color_blue  = 0.0;
 
     static constexpr uint32_t SAMPLES_PER_AUDIO_BLOCK               = 512;
     float                     mLeftOutput[SAMPLES_PER_AUDIO_BLOCK]  = {0};
@@ -53,8 +49,8 @@ struct UmgebungModule : Module {
 #endif
 
     enum ParamId {
-        PITCH_PARAM_1,
-        PITCH_PARAM_2,
+        KNOB_PARAM_A,
+        KNOB_PARAM_B,
         RELOAD_PARAM,
         LOAD_APP,
         PARAMS_LEN
@@ -62,16 +58,33 @@ struct UmgebungModule : Module {
     enum InputId {
         LEFT_INPUT,
         RIGHT_INPUT,
+        LEFT_CV_INPUT,
+        RIGHT_CV_INPUT,
         INPUTS_LEN
     };
     enum OutputId {
         LEFT_OUTPUT,
         RIGHT_OUTPUT,
+        LEFT_CV_OUTPUT,
+        RIGHT_CV_OUTPUT,
         OUTPUTS_LEN
     };
     enum LightId {
         BLINK_LIGHT,
         LIGHTS_LEN
+    };
+
+    enum { LEFT_CV_INPUT_POS,
+           RIGHT_CV_INPUT_POS,
+           LEFT_CV_OUTPUT_POS,
+           RIGHT_CV_OUTPUT_POS,
+           KNOB_PARAM_A_POS,
+           KNOB_PARAM_B_POS,
+           CV_POS_LEN };
+
+    struct CVEvent {
+        static constexpr uint32_t length       = CV_POS_LEN;
+        float                     data[length] = {};
     };
 
     void handle_umgebung_app() {
@@ -95,21 +108,25 @@ struct UmgebungModule : Module {
     }
 
     UmgebungModule() {
-        mInstanceCounter++;
-        if (mInstanceCounter > 1) {
-            UMGB_VCV_LOG("mInstanceCounter: %i", mInstanceCounter);
-            UMGB_VCV_LOG("WARNING multiple instances of plugins are currently not supported.");
-            // throw Exception(string::f("multiple instances of plugins are currently not supported."));
-        }
+        // mInstanceCounter++;
+        // if (mInstanceCounter > 1) {
+        //     UMGB_VCV_LOG("mInstanceCounter: %i", mInstanceCounter);
+        //     UMGB_VCV_LOG("WARNING multiple instances of plugins are currently not supported.");
+        //     // throw Exception(string::f("multiple instances of plugins are currently not supported."));
+        // }
         handle_umgebung_app();
 
         config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-        configParam(PITCH_PARAM_1, 0.f, 1.f, 0.f, "");
-        configParam(PITCH_PARAM_2, 0.f, 1.f, 0.f, "");
+        configParam(KNOB_PARAM_A, 0.f, 1.f, 0.f, "");
+        configParam(KNOB_PARAM_B, 0.f, 1.f, 0.f, "");
         configInput(LEFT_INPUT, "");
         configInput(RIGHT_INPUT, "");
+        configInput(LEFT_CV_INPUT, "");
+        configInput(RIGHT_CV_INPUT, "");
         configOutput(LEFT_OUTPUT, "");
         configOutput(RIGHT_OUTPUT, "");
+        configOutput(LEFT_CV_OUTPUT, "");
+        configOutput(RIGHT_CV_OUTPUT, "");
     }
 
     ~UmgebungModule() override {
@@ -118,9 +135,9 @@ struct UmgebungModule : Module {
         } catch (Exception e) {
             UMGB_VCV_LOG("could not unload app");
         }
-        if (mInstanceCounter > 0) {
-            mInstanceCounter--;
-        }
+        // if (mInstanceCounter > 0) {
+        //     mInstanceCounter--;
+        // }
     }
 
     void process_audio(const int length) {
@@ -161,6 +178,9 @@ struct UmgebungModule : Module {
 
     void process(const ProcessArgs& args) override {
         if (mInitializeApp) {
+            if (umgebung_app && fSettingsFunction) {
+                fSettingsFunction(umgebung_app);
+            }
             if (umgebung_app && fSetupFunction) {
                 fSetupFunction(umgebung_app);
             }
@@ -195,10 +215,6 @@ struct UmgebungModule : Module {
             UMGB_VCV_LOG("filename: %s", filename.c_str());
         }
         mBangLoadAppButtonState = params[LOAD_APP].getValue();
-
-        // TODO pass this on as an event
-        float bg_color_green = params[PITCH_PARAM_1].getValue();
-        float bg_color_blue  = params[PITCH_PARAM_2].getValue();
 
         // outputs[LEFT_OUTPUT].setVoltage(inputs[LEFT_INPUT].getVoltage());  // pass through
         // outputs[RIGHT_OUTPUT].setVoltage(inputs[RIGHT_INPUT].getVoltage()); // pass through
@@ -238,9 +254,21 @@ struct UmgebungModule : Module {
         }
         lights[BLINK_LIGHT].setBrightness(blinkPhase < 0.5f ? 1.f : 0.f);
 
-        // if (umgebung_app) {
-        //     umgebung_app->loop();
-        // }
+        if (umgebung_app && fEventFunction) {
+            // TODO only send if connected to CV … would be nice to notify the sketch of which CV is connected
+            // if (inputs[LEFT_CV_INPUT].isConnected() ||
+            //     inputs[RIGHT_CV_INPUT].isConnected() ||
+            //     outputs[LEFT_CV_OUTPUT].isConnected() ||
+            //     outputs[RIGHT_CV_OUTPUT].isConnected()) {
+            cv_event.data[LEFT_CV_INPUT_POS]  = inputs[LEFT_CV_INPUT].getVoltage();
+            cv_event.data[RIGHT_CV_INPUT_POS] = inputs[RIGHT_CV_INPUT].getVoltage();
+            cv_event.data[KNOB_PARAM_A_POS]   = params[KNOB_PARAM_A].getValue();
+            cv_event.data[KNOB_PARAM_B_POS]   = params[KNOB_PARAM_B].getValue();
+            fEventFunction(umgebung_app, cv_event.data, CVEvent::length);
+            outputs[LEFT_CV_OUTPUT].setVoltage(cv_event.data[LEFT_CV_OUTPUT_POS]);
+            outputs[RIGHT_CV_OUTPUT].setVoltage(cv_event.data[RIGHT_CV_OUTPUT_POS]);
+            // }
+        }
     }
 
     void call_draw() const {
@@ -270,23 +298,28 @@ struct UmgebungModule : Module {
     typedef void         (*BeatFunctionPtr)(UmgebungApp*, uint32_t);
     typedef void         (*AudioblockFunctionPtr)(UmgebungApp*, float**, float**, int);
     typedef const char*  (*NameFunctionPtr)(UmgebungApp*);
+    typedef void         (*EventFunctionPtr)(UmgebungApp*, float*, uint32_t);
 
     CreateUmgebungFunctionPtr fCreateUmgebungFunction  = nullptr;
     DestroyFunctionPtr        fDestroyUmgebungFunction = nullptr;
+    SetupFunctionPtr          fSettingsFunction        = nullptr;
     SetupFunctionPtr          fSetupFunction           = nullptr;
     DrawFunctionPtr           fDrawFunction            = nullptr;
     BeatFunctionPtr           fBeatFunction            = nullptr;
     AudioblockFunctionPtr     fAudioblockFunction      = nullptr;
     NameFunctionPtr           fNameFunction            = nullptr;
+    EventFunctionPtr          fEventFunction           = nullptr;
 
     void load_symbols() {
         load_symbol(mHandleUmgebungSketch, "create_umgebung", fCreateUmgebungFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "destroy_umgebung", fDestroyUmgebungFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "settings", fSettingsFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "setup", fSetupFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "draw", fDrawFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "beat", fBeatFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "audioblock", fAudioblockFunction, mLibraryName);
         load_symbol(mHandleUmgebungSketch, "name", fNameFunction, mLibraryName);
+        load_symbol(mHandleUmgebungSketch, "event", fEventFunction, mLibraryName);
     }
 
     void load_app() {
@@ -379,6 +412,7 @@ struct UmgebungModule : Module {
 
 private:
     UmgebungApp* umgebung_app = nullptr;
+    CVEvent      cv_event;
 };
 
 struct UmgebungWidget : OpenGlWidget {
@@ -439,18 +473,25 @@ struct UmgebungModuleWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        constexpr float M_GRID_SIZE  = 15.24;
-        constexpr float M_GRID_ROW_1 = M_GRID_SIZE;
-        constexpr float M_GRID_ROW_2 = 26.529;
+        constexpr float M_GRID_SIZE            = 15.24;
+        constexpr float M_GRID_ROW_1           = M_GRID_SIZE;
+        constexpr float M_GRID_ROW_2           = 26.529;
+        constexpr float M_GRID_CONNECTOR_SPACE = 10.127;
 
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 2)), module, UmgebungModule::LEFT_INPUT));
         addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 2)), module, UmgebungModule::RIGHT_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 2 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::LEFT_CV_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 2 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::RIGHT_CV_INPUT));
+
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 6)), module, UmgebungModule::LEFT_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 6)), module, UmgebungModule::RIGHT_OUTPUT));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM_1));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4)), module, UmgebungModule::PITCH_PARAM_2));
-        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 7.5)), module, UmgebungModule::RELOAD_PARAM));
-        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 7.5)), module, UmgebungModule::LOAD_APP));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 6 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::LEFT_CV_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 6 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::RIGHT_CV_OUTPUT));
+
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 4)), module, UmgebungModule::KNOB_PARAM_A));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4)), module, UmgebungModule::KNOB_PARAM_B));
+        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 4 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::RELOAD_PARAM));
+        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::LOAD_APP));
 
         if (module) {
             module->mTextFieldAppName            = createWidget<LedDisplayTextField>(mm2px(Vec(32.595, 107.466)));
@@ -483,7 +524,7 @@ struct UmgebungModuleWidget : ModuleWidget {
         mDisplaySize: 323.666, 220.789
         */
 
-        Vec mDisplaySize     = mm2px(Vec(109.615, 74.774));
+        Vec mDisplaySize     = mm2px(Vec(109.615, 74.774)); // actual sketch size 323.666, 220.789
         Vec mDisplayPosition = mm2px(Vec(32.595, 21.684));
         std::cout << "mDisplaySize    : " << mDisplaySize.x << ", " << mDisplaySize.y << std::endl;
         std::cout << "mDisplayPosition: " << mDisplayPosition.x << ", " << mDisplayPosition.y << std::endl;

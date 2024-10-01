@@ -5,7 +5,6 @@ set(UMGEBUNG_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../umgebung") # set path to um
 link_directories("/usr/local/lib")                              # optional, can help to fix issues with Homebrew on macOS
 link_directories("/opt/homebrew/lib/")
 
-option(ENABLE_CAPTURE "Enable camera capture" ON)
 option(DISABLE_GRAPHICS "Disable graphic output" OFF)
 option(DISABLE_VIDEO "Disable video output" OFF)
 option(DISABLE_AUDIO "Disable audio output + input" OFF)
