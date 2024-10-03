@@ -1,8 +1,8 @@
 # Umgebung / VCV Rack / Notes
 
-following instructions from [Plugin Development Tutorial](https://vcvrack.com/manual/PluginDevelopmentTutorial)
+## Setting up the Development Environment
 
-## setting up development environment
+following instructions from [Plugin Development Tutorial](https://vcvrack.com/manual/PluginDevelopmentTutorial) for macOS:
 
 ```zsh
 $ brew install git wget cmake autoconf automake libtool jq python zstd pkg-config
@@ -24,7 +24,7 @@ $ make dist
 ( copy plugin from `‌dist` to `~/Library/Application Support/Rack2/` )
 ```
 
-## adobe illustrator export settings
+## Export Panel Designs with Adobe Illustrator (Settings)
 
 - Export As or Artboards Export
 - Styling: Inline Style
@@ -33,29 +33,3 @@ $ make dist
 - Object IDs: Layer Names
 - Minify unchecked
 - Responsive unchecked
-
-## creating a widget
-
-- `OpenGlWidget` might be the one we need ( see `$RACK_DIR/include/widget/OpenGlWidget.hpp` + `$RACK_DIR/src/widget/OpenGlWidget.cpp` ) 
-
-```cpp
-struct SomeWidget : ModuleWidget {
-  SomeWidget(SomeModule *module){
-    setModule(module);
-    box.size = Vec(150, 380);
-    
-    {
-        OpenGlWidget *w = new OpenGlWidget();
-
-       // was trying these but no help
-       // w->setSize(Vec(50, 50)); 
-       // w->fbSize = Vec(50, 50);
-
-       addChild(w);
-    }
-  }
-}
-```
-
-(WIP)
-

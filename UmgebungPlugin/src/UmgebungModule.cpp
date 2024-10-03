@@ -1,6 +1,3 @@
-// TODO add CV 2 inputs and 2 outputs
-// TODO propagate knobs to sketch as `event(float*, uint8_t)`?
-
 #include <dlfcn.h>
 #include <iostream>
 #include <osdialog.h>
@@ -37,8 +34,9 @@ struct UmgebungModule : Module {
     uint16_t mSampleCollectorCounter = 0;
     uint32_t mBeatCounter            = 0;
 
+    std::string          fCurrentAppPath;
+    const std::string    mDefaultApp         = "UmgebungApp";
     LedDisplayTextField* mTextFieldAppName   = nullptr;
-    std::string          mLibraryName        = "dep/libUmgebungApp";
     bool                 mInitializeApp      = true;
     bool                 mAllocateAudioblock = true;
 
@@ -49,10 +47,10 @@ struct UmgebungModule : Module {
 #endif
 
     enum ParamId {
-        KNOB_PARAM_A,
-        KNOB_PARAM_B,
+        KNOB_A_PARAM,
+        KNOB_B_PARAM,
         RELOAD_PARAM,
-        LOAD_APP,
+        LOAD_APP_PARAM,
         PARAMS_LEN
     };
     enum InputId {
@@ -117,8 +115,8 @@ struct UmgebungModule : Module {
         handle_umgebung_app();
 
         config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-        configParam(KNOB_PARAM_A, 0.f, 1.f, 0.f, "");
-        configParam(KNOB_PARAM_B, 0.f, 1.f, 0.f, "");
+        configParam(KNOB_A_PARAM, 0.f, 1.f, 0.f, "");
+        configParam(KNOB_B_PARAM, 0.f, 1.f, 0.f, "");
         configInput(LEFT_INPUT, "");
         configInput(RIGHT_INPUT, "");
         configInput(LEFT_CV_INPUT, "");
@@ -193,11 +191,13 @@ struct UmgebungModule : Module {
         }
         mBangReloadButtonState = params[RELOAD_PARAM].getValue();
 
-        if (params[LOAD_APP].getValue() > mBangLoadAppButtonState) {
+        if (params[LOAD_APP_PARAM].getValue() > mBangLoadAppButtonState) {
             UMGB_VCV_LOG("loading app");
             // from Wavetable.hpp
             static const char WAVETABLE_FILTERS[] = "WAV (.wav):wav,WAV;Raw:f32,i8,i16,i24,i32,*";
             osdialog_filters* filters             = osdialog_filters_parse(WAVETABLE_FILTERS);
+            DEFER({ osdialog_filters_free(filters); });
+
             // std::string       wavetableDir;
             char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);
             // char* pathC = osdialog_file(OSDIALOG_OPEN, wavetableDir.empty() ? NULL : wavetableDir.c_str(), NULL, filters);
@@ -214,7 +214,7 @@ struct UmgebungModule : Module {
             UMGB_VCV_LOG("dir path: %s", wavetableDir.c_str());
             UMGB_VCV_LOG("filename: %s", filename.c_str());
         }
-        mBangLoadAppButtonState = params[LOAD_APP].getValue();
+        mBangLoadAppButtonState = params[LOAD_APP_PARAM].getValue();
 
         // outputs[LEFT_OUTPUT].setVoltage(inputs[LEFT_INPUT].getVoltage());  // pass through
         // outputs[RIGHT_OUTPUT].setVoltage(inputs[RIGHT_INPUT].getVoltage()); // pass through
@@ -262,8 +262,8 @@ struct UmgebungModule : Module {
             //     outputs[RIGHT_CV_OUTPUT].isConnected()) {
             cv_event.data[LEFT_CV_INPUT_POS]  = inputs[LEFT_CV_INPUT].getVoltage();
             cv_event.data[RIGHT_CV_INPUT_POS] = inputs[RIGHT_CV_INPUT].getVoltage();
-            cv_event.data[KNOB_PARAM_A_POS]   = params[KNOB_PARAM_A].getValue();
-            cv_event.data[KNOB_PARAM_B_POS]   = params[KNOB_PARAM_B].getValue();
+            cv_event.data[KNOB_PARAM_A_POS]   = params[KNOB_A_PARAM].getValue();
+            cv_event.data[KNOB_PARAM_B_POS]   = params[KNOB_B_PARAM].getValue();
             fEventFunction(umgebung_app, cv_event.data, CVEvent::length);
             outputs[LEFT_CV_OUTPUT].setVoltage(cv_event.data[LEFT_CV_OUTPUT_POS]);
             outputs[RIGHT_CV_OUTPUT].setVoltage(cv_event.data[RIGHT_CV_OUTPUT_POS]);
@@ -275,6 +275,10 @@ struct UmgebungModule : Module {
         if (umgebung_app && fDrawFunction) {
             fDrawFunction(umgebung_app);
         }
+    }
+
+    void set_app_path(const std::string& path) {
+        fCurrentAppPath = path;
     }
 
     template<typename T>
@@ -311,47 +315,54 @@ struct UmgebungModule : Module {
     EventFunctionPtr          fEventFunction           = nullptr;
 
     void load_symbols() {
-        load_symbol(mHandleUmgebungSketch, "create_umgebung", fCreateUmgebungFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "destroy_umgebung", fDestroyUmgebungFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "settings", fSettingsFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "setup", fSetupFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "draw", fDrawFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "beat", fBeatFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "audioblock", fAudioblockFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "name", fNameFunction, mLibraryName);
-        load_symbol(mHandleUmgebungSketch, "event", fEventFunction, mLibraryName);
+        const std::string mAppName = system::getFilename(fCurrentAppPath);
+        load_symbol(mHandleUmgebungSketch, "create_umgebung", fCreateUmgebungFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "destroy_umgebung", fDestroyUmgebungFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "settings", fSettingsFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "setup", fSetupFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "draw", fDrawFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "beat", fBeatFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "audioblock", fAudioblockFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "name", fNameFunction, mAppName);
+        load_symbol(mHandleUmgebungSketch, "event", fEventFunction, mAppName);
+    }
+
+    bool check_app_path(const std::string& path) {
+        return !path.empty() && system::isFile(path);
+    }
+
+    std::string get_default_app_path() {
+        std::string mFullDefaultAppPath;
+#if defined ARCH_LIN
+        mFullDefaultAppPath = pluginInstance->path + "/dep/lib" + mDefaultApp + ".so";
+#elif defined ARCH_WIN
+        mFullDefaultAppPath = pluginInstance->path + "/dep/lib" + mDefaultApp + ".dll";
+#elif ARCH_MAC
+        mFullDefaultAppPath = pluginInstance->path + "/dep/lib" + mDefaultApp + ".dylib";
+#endif
+        return mFullDefaultAppPath;
     }
 
     void load_app() {
-        /* Load plugin library */
-        std::string mAppLibraryFilename;
-#if defined ARCH_LIN
-        mAppLibraryFilename = pluginInstance->path + "/" + mLibraryName + ".so";
-#elif defined ARCH_WIN
-        mAppLibraryFilename = pluginInstance->path + "/" + mLibraryName + ".dll";
-#elif ARCH_MAC
-        mAppLibraryFilename = pluginInstance->path + "/" + mLibraryName + ".dylib";
-#endif
-        UMGB_VCV_LOG("loading app from file: %s", mAppLibraryFilename.c_str());
-
-        /* Check file existence */
-        if (!system::isFile(mAppLibraryFilename)) {
-            throw Exception(string::f("Library %s does not exist", mLibraryName.c_str()));
+        if (!check_app_path(fCurrentAppPath)) {
+            UMGB_VCV_LOG("resetting app to default: %s", mDefaultApp.c_str());
+            fCurrentAppPath = get_default_app_path();
         }
 
-        /* Load dynamic/shared library */
+        /* Load app library */
+        UMGB_VCV_LOG("loading app from file: %s", fCurrentAppPath.c_str());
 #if defined ARCH_WIN
         SetErrorMode(SEM_NOOPENFILEERRORBOX | SEM_FAILCRITICALERRORS);
-        HINSTANCE handle = LoadLibrary(mAppLibraryFilename.c_str());
+        HINSTANCE handle = LoadLibrary(mCurrentAppPath.c_str());
         SetErrorMode(0);
         if (!handle) {
             int error = GetLastError();
-            throw Exception(string::f("Failed to load library %s: code %d", mLibraryName.c_str(), error));
+            throw Exception(string::f("Failed to load library %s: code %d", mCurrentAppPath.c_str(), error));
         }
 #else
-        void* handle = dlopen(mAppLibraryFilename.c_str(), RTLD_NOW | RTLD_LOCAL);
+        void* handle = dlopen(fCurrentAppPath.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!handle) {
-            throw Exception(string::f("Failed to load library %s: %s", mLibraryName.c_str(), dlerror()));
+            throw Exception(string::f("Failed to load library %s: %s", fCurrentAppPath.c_str(), dlerror()));
         }
 #endif
         mHandleUmgebungSketch = handle;
@@ -425,6 +436,29 @@ struct UmgebungWidget : OpenGlWidget {
         FramebufferWidget::step();
     }
 
+    void appendContextMenu(Menu* menu) {
+        UMGB_VCV_LOG("appendContextMenu");
+    }
+
+    void onPathDrop(const PathDropEvent& e) override {
+        // if (!module) {
+        //     return;
+        // }
+        if (e.paths.empty()) {
+            return;
+        }
+        const std::string path = e.paths[0];
+        // if (system::getExtension(path) != ".wav") {
+        //     return;
+        // }
+        // module->wavetable.load(path);
+        // module->wavetable.filename = system::getFilename(path);
+        UMGB_VCV_LOG("onPathDrop: %s", path.c_str());
+        // UMGB_VCV_LOG("          : %s", system::getFilename(path).c_str());
+        module->set_app_path(path);
+        e.consume(this);
+    }
+
     void drawFramebuffer() override {
         math::Vec fbSize = getFramebufferSize();
         glViewport(0.0, 0.0, fbSize.x, fbSize.y);
@@ -459,6 +493,50 @@ struct UmgebungWidget : OpenGlWidget {
             UMGB_VCV_LOG("module not set");
         }
     }
+
+    /** see `Widget.hpp` for all events */
+
+    // look into `recursePositionEvent(&Widget::onXXX, e);`
+
+    void onHover(const HoverEvent& e) override {
+        /* occurs when mouse is hovering over widget */
+        // UMGB_VCV_LOG("onHover: %f, %f p:(%f, %f)", e.pos.x, e.pos.y, e.mouseDelta.x, e.mouseDelta.y);
+    }
+
+    void onButton(const ButtonEvent& e) override {
+        /* occurs when mouse is pressed or released over widget */
+        // button: GLFW_MOUSE_BUTTON_LEFT, GLFW_MOUSE_BUTTON_RIGHT, GLFW_MOUSE_BUTTON_MIDDLE
+        // action: GLFW_PRESS or GLFW_RELEASE
+        UMGB_VCV_LOG("onButton: button: %i, action: %i", e.button, e.action);
+    }
+
+    void onHoverScroll(const HoverScrollEvent& e) override {
+        UMGB_VCV_LOG("onMouseScroll: delta: %f, %f", e.scrollDelta.x, e.scrollDelta.y);
+    }
+
+    void onHoverKey(const HoverKeyEvent& e) override {
+        // action: GLFW_RELEASE, GLFW_PRESS, GLFW_REPEAT, or RACK_HELD
+        if (e.action == GLFW_PRESS) {
+            UMGB_VCV_LOG("keyPress    : key: %s", e.keyName.c_str());
+        } else if (e.action == GLFW_RELEASE) {
+            UMGB_VCV_LOG("keyReleased : key: %s", e.keyName.c_str());
+        } else if (e.action == GLFW_REPEAT) {
+            UMGB_VCV_LOG("keyRepeat   : key: %s", e.keyName.c_str());
+        } else if (e.action == RACK_HELD) {
+            // UMGB_VCV_LOG("keyHeld     : key: %s", e.keyName.c_str());
+        } else {
+            UMGB_VCV_LOG("onHoverKey  : key: %c, scancode: %i, keyName: %s, action: %i, mods: %i", e.key, e.scancode, e.keyName.c_str(), e.action, e.mods);
+        }
+    }
+
+    /* these methods below seem to have no effect: */
+    // void onHoverText(const HoverTextEvent& e) override { UMGB_VCV_LOG("onHoverText: codepoint: %i", e.codepoint); }
+    // void onEnter(const EnterEvent& e) override { UMGB_VCV_LOG("onEnter"); }
+    // void onLeave(const LeaveEvent& e) override { UMGB_VCV_LOG("onLeave"); }
+    // void onSelect(const SelectEvent& e) override { UMGB_VCV_LOG("onSelect"); }
+    // void onDragStart(const DragStartEvent& e) override { UMGB_VCV_LOG("onDragStart"); }
+    // void onDragEnd(const DragEndEvent& e) override { UMGB_VCV_LOG("onDragEnd"); }
+    // void onDragDrop(const DragDropEvent& e) override { UMGB_VCV_LOG("onDragDrop"); }
 };
 
 struct UmgebungModuleWidget : ModuleWidget {
@@ -488,10 +566,10 @@ struct UmgebungModuleWidget : ModuleWidget {
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 6 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::LEFT_CV_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 6 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::RIGHT_CV_OUTPUT));
 
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 4)), module, UmgebungModule::KNOB_PARAM_A));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4)), module, UmgebungModule::KNOB_PARAM_B));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 4)), module, UmgebungModule::KNOB_A_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4)), module, UmgebungModule::KNOB_B_PARAM));
         addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_1, M_GRID_SIZE * 4 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::RELOAD_PARAM));
-        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::LOAD_APP));
+        addParam(createParamCentered<CKD6>(mm2px(Vec(M_GRID_ROW_2, M_GRID_SIZE * 4 + M_GRID_CONNECTOR_SPACE)), module, UmgebungModule::LOAD_APP_PARAM));
 
         if (module) {
             module->mTextFieldAppName            = createWidget<LedDisplayTextField>(mm2px(Vec(32.595, 107.466)));
